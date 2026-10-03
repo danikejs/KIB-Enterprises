@@ -1,0 +1,29 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://main.gd" id="1_main"]
+[ext_resource type="Script" path="res://scripts/match_rules.gd" id="2_rules"]
+[ext_resource type="Script" path="res://scripts/arena.gd" id="3_arena"]
+[ext_resource type="Script" path="res://scripts/sound.gd" id="4_audio"]
+
+[node name="PingPong" type="Node2D"]
+script = ExtResource("1_main")
+
+[node name="RegrasDaPartida" type="Node" parent="."]
+script = ExtResource("2_rules")
+
+[node name="Arena2D" type="Node2D" parent="."]
+script = ExtResource("3_arena")
+
+[node name="Audio" type="Node" parent="."]
+script = ExtResource("4_audio")
+
+[node name="Interface" type="CanvasLayer" parent="."]
+
+[node name="Telas" type="Control" parent="Interface"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2

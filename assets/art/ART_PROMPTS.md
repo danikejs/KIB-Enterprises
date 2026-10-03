@@ -1,0 +1,28 @@
+# Arte da edição pixel art
+
+Recursos originais criados com a ferramenta integrada de geração de imagens. A referência enviada orientou a câmera de cima, a mesa entre dois personagens e a ambientação de praça. A mesa, a interface e os efeitos são renderizados pela Godot.
+
+## Cenário — park.png
+
+Prompt utilizado:
+
+> Create an ORIGINAL production background asset for a cozy 2D pixel-art table-tennis video game. Landscape 16:9, target 1280x720 composition. Viewpoint: high overhead, near top-down orthographic with a slight RPG view showing small vertical faces of benches; NOT isometric. Retro detailed 16-bit pixel art, crisp square pixels, beautiful limited palette of moss olive greens, warm gray stone, muted teal, amber sunlight. Scene: quiet neighborhood public park in the late afternoon. A broad worn rectangular stone-tile plaza occupies the CENTRAL 55 percent of the image. The middle of this plaza MUST BE EMPTY: no table, no people, no objects, no markings at all in the center, because the game will render the table and animated characters there. Clear playable space from 35% to65% image width and15% to90% height. Outer edges decorated with lush pixel trees with thick trunks and dappled leaf canopies, grass tufts, fallen leaves between stone paving, two wooden benches to the far left and far right, a small warm lamppost at an outer corner, low shrubs. Keep the background relatively calm and low contrast near the center. Rich environmental pixel-art, nostalgic peaceful atmosphere, fixed camera, continuous landscape fills all edges. No UI, no text, no people, no ball, no paddles, no ping pong table, no logos, no watermark. The image is a clean game background asset, not a screenshot or a mockup. Include subtle paving wear but no large cracks dominating the empty center.
+
+## Personagens — players.png
+
+Solicitada saída com fundo transparente. O arquivo incluído é RGBA, com grade 4 × 2.
+
+Prompt utilizado:
+
+> Create an ORIGINAL transparent PNG character animation atlas for a 2D top-down pixel art table tennis game. Asset sheet, NO environment. Exact regular grid: FOUR equal columns and TWO equal rows, EIGHT separate full-body sprites total, all fully inside their own equal-sized cells, plenty of transparent padding. Landscape canvas ideally 1536 by 1024. Every sprite centered identically in its cell and same scale, baseline consistently at 85% of each cell height. Render crisp detailed 16-bit pixel-art with clear small block pixels and limited color shading; not a painting, not a vector drawing. TOP ROW: one same young woman with dark brown ponytail, pale skin, teal/mint athletic shirt, navy shorts, peach/orange sneakers, red round table-tennis paddle in right hand. Seen FROM BEHIND facing UP/NORTH toward the far end of the table. Column1 ready athletic idle stance feet apart, column2 shuffle LEFT stepping with left foot, column3 shuffle RIGHT stepping with right foot, column4 forehand paddle swing to right with torso twist still facing north. BOTTOM ROW: one same young man with short dark hair, medium skin, dusty purple athletic shirt, dark navy shorts, light sneakers, red table tennis paddle. Seen FROM THE FRONT facing DOWN/SOUTH toward the viewer. Column1 ready athletic idle stance feet apart, column2 shuffle LEFT, column3 shuffle RIGHT, column4 forehand swing arm extended. Use an overhead RPG camera so the tops of their heads and shoes are visible, consistent with top-down park gameplay. Keep body proportions realistic stylized and compact, around 3 heads high, each sprite roughly 50 pixels wide by 70 pixels high at logical pixel scale. Small clean facial features, clean silhouette. Every frame includes the paddle, arms and feet, no clipping or cropped extremities. Same character identity preserved within each row. Completely transparent background, no floor, no cast shadows, no captions, no grid lines, no text, no borders, no logo. Exactly eight sprites in a regular aligned 4x2 grid.
+
+## Uso na Godot
+
+- O cenário é desenhado no fundo do viewport de 1280 × 720.
+- Cada célula do atlas tem 384 × 512 pixels; o recorte acontece em `scripts/arena.gd`.
+- O filtro de textura dos personagens é Nearest.
+- Os sprites e o cenário originais estão no projeto, sem depender de links externos.
+
+
+## Atlas v0.4 — ferramenta integrada image_gen
+Create a production sprite atlas for a pixel art table tennis game. PNG with truly transparent background. Landscape canvas 1536x1024. EXACT 4 equal columns and 2 equal rows, each cell 384x512. Eight full-body sprites centered in their cell at consistent scale, feet at same baseline, generous transparent padding. TOP ROW: Hugo, a young adult male athlete with short dark hair, teal t-shirt, navy shorts, white sneakers, holding red table tennis paddle; seen from BACK facing up into court. BOTTOM ROW: opponent young adult male short brown hair, purple shirt, black shorts, white sneakers, paddle; seen from FRONT facing down court. Each row four frames in order: ready crouch stance, lateral shuffle step with left foot extended, lateral shuffle step with right foot extended, forehand paddle swing. Consistent body proportions and registration between frames. CRITICAL STYLE: genuine very low resolution 16-bit pixel sprites, each figure looks like 24x40 native pixels enlarged by nearest neighbor. Large perfectly square visible pixel clusters on uniform grid, stepped silhouettes, only 12 flat colors per character, 2 shade levels, tiny 1 pixel facial features, no anti-aliasing, no smooth curves, no gradients, no rendered illustration. Compact sporty bodies. All sprites entirely inside individual cell, never crossing boundaries. No text, no grid lines, no floor, no shadows, no scenery.
