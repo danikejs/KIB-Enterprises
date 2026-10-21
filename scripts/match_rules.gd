@@ -18,9 +18,26 @@ const OPPONENTS := [
 	{"name": "CAOS", "style": "IMPREVISÍVEL", "speed": 360.0, "reaction": 0.12, "error": 32.0, "height": 82.0, "color": "ff8197", "description": "Ritmo variável. Confie no seu timing."}
 ]
 const UPGRADES := [
-	{"name": "Reflexo de Ouro", "tag": "PRECISÃO", "description": "+15 ms na janela de timing perfeito.", "symbol": "01"},
-	{"name": "Spin de Aço", "tag": "CONTROLE", "description": "+30% de intensidade no efeito da bola.", "symbol": "02"},
-	{"name": "Carga Rápida", "tag": "ESPECIAL", "description": "+6 de carga em cada rebatida.", "symbol": "03"}
+	{"name": "Defesa", "tag": "SEGURAR A TROCA"},
+	{"name": "Efeito", "tag": "ABRIR ÂNGULOS"},
+	{"name": "Ataque", "tag": "ACELERAR A BOLA"}
+]
+const BUILD_STEPS := [
+	[
+		{"name": "Raquete firme", "gain": "Área de contato +14 unidades.", "cost": "Movimento 5% mais lento."},
+		{"name": "Sangue frio", "gain": "Janela do perfeito +20 ms.", "cost": "Bônus de velocidade do perfeito: 8%, em vez de 10%."},
+		{"name": "Contra-ataque", "gain": "Perfeito: +25% de velocidade e 30 de carga.", "cost": "Exige 3 escolhas em Defesa; mantém o movimento reduzido."}
+	],
+	[
+		{"name": "Giro de pulso", "gain": "Intensidade do efeito +45%.", "cost": "Janela do perfeito -10 ms."},
+		{"name": "Passo cruzado", "gain": "Efeito gerado pelo movimento +80%.", "cost": "Movimento 5% mais lento."},
+		{"name": "Incêndio curvo", "gain": "O especial mantém 100% do efeito, em vez de 40%.", "cost": "Carga por rebatida -2; exige 3 escolhas em Efeito."}
+	],
+	[
+		{"name": "Bola pesada", "gain": "Especial: +45% de velocidade, em vez de 32%.", "cost": "Carga por rebatida -2."},
+		{"name": "Na risca", "gain": "Perfeito: +20% de velocidade, em vez de 10%.", "cost": "Janela do perfeito -15 ms."},
+		{"name": "Segunda chama", "gain": "Após o especial, a barra mantém 20 de carga.", "cost": "Exige 3 escolhas em Ataque; mantém a janela reduzida."}
+	]
 ]
 @export var points_to_win: int = 7
 @export var max_ball_speed: float = 1200.0
@@ -62,10 +79,19 @@ var total_points: int = 0
 var rally: int = 0
 var best_rally: int = 0
 var upgrades: Array[String] = []
+var build_ranks: Array[int] = [0, 0, 0]
+var base_player_speed: float = 460.0
+var perfect_multiplier: float = 1.10
+var perfect_charge: float = 18.0
+var special_multiplier: float = 1.32
+var special_spin: float = 0.4
+var special_refund: float = 0.0
+var movement_spin: float = 1.0
 var rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
 	rng.randomize()
+	base_player_speed = player_speed
 
 func opponent() -> Dictionary:
 	return OPPONENTS[stage]
@@ -80,6 +106,15 @@ func new_run() -> void:
 	total_points = 0
 	best_rally = 0
 	upgrades.clear()
+	build_ranks = [0, 0, 0]
+	player_speed = base_player_speed
+	player_height = 90.0
+	perfect_multiplier = 1.10
+	perfect_charge = 18.0
+	special_multiplier = 1.32
+	special_spin = 0.4
+	special_refund = 0.0
+	movement_spin = 1.0
 	running = false
 	paused = false
 	points = [0, 0]
@@ -230,7 +265,7 @@ func hit_paddle(is_player: bool) -> void:
 	if is_player:
 		charge = minf(100, charge + charge_gain)
 		var spin_input := Input.get_axis("spin_up", "spin_down")
-		ball_spin = (spin_input * 30.0 + player_motion * 0.025) * spin_multiplier
+		ball_spin = (spin_input * 30.0 + player_motion * 0.025 * movement_spin) * spin_multiplier
 		last_contact = clock
 		contact_rewarded = false
 		if clock - last_swing <= timing_window:
@@ -238,10 +273,10 @@ func hit_paddle(is_player: bool) -> void:
 		last_swing = -10
 		if special_armed:
 			special_armed = false
-			charge = 0
+			charge = special_refund
 			fireball = true
-			velocity = (velocity * 1.32).limit_length(max_ball_speed)
-			ball_spin *= 0.4
+			velocity = (velocity * special_multiplier).limit_length(max_ball_speed)
+			ball_spin *= special_spin
 			feedback.emit("BOLA DE INCÊNDIO", "special")
 			impact.emit(ball, "special")
 	elif stage >= 2:
@@ -260,8 +295,8 @@ func perfect_hit() -> void:
 		return
 	contact_rewarded = true
 	total_perfect += 1
-	charge = minf(100, charge + 18)
-	velocity = (velocity * 1.10).limit_length(max_ball_speed)
+	charge = minf(100, charge + perfect_charge)
+	velocity = (velocity * perfect_multiplier).limit_length(max_ball_speed)
 	feedback.emit("TIMING PERFEITO", "perfect")
 	impact.emit(ball, "perfect")
 
@@ -290,7 +325,7 @@ func award_point(player_won: bool) -> void:
 	var won_set := (points[winner] >= points_to_win and points[winner] - points[loser] >= 2) or points[winner] >= cap
 	if won_set:
 		sets[winner] += 1
-		if sets[winner] >= 2:
+		if sets[winner] >= 1:
 			running = false
 			velocity = Vector2.ZERO
 			match_finished.emit(player_won)
@@ -302,9 +337,56 @@ func award_point(player_won: bool) -> void:
 		feedback.emit("PONTO SEU!" if player_won else "PONTO DO ADVERSÁRIO", "point")
 		reset_rally(1.15)
 
+func upgrade_offer(index: int) -> Dictionary:
+	var rank := mini(build_ranks[index], 2)
+	var offer: Dictionary = BUILD_STEPS[index][rank].duplicate()
+	offer["path"] = UPGRADES[index].name
+	offer["rank"] = rank + 1
+	return offer
+
+func build_summary() -> String:
+	var parts: Array[String] = []
+	for i in range(3):
+		if build_ranks[i] > 0:
+			parts.append("%s %s" % [UPGRADES[i].name, ["", "I", "II", "III"][build_ranks[i]]])
+	return "Sem melhorias" if parts.is_empty() else " / ".join(parts)
+
 func apply_upgrade(index: int) -> void:
+	if index < 0 or index > 2 or upgrades.size() >= 3 or build_ranks[index] >= 3:
+		return
+	var offer := upgrade_offer(index)
+	build_ranks[index] += 1
 	match index:
-		0: timing_window = minf(0.16, timing_window + 0.015)
-		1: spin_multiplier += 0.30
-		2: charge_gain += 6
-	upgrades.append(str(UPGRADES[index].name))
+		0:
+			match build_ranks[0]:
+				1:
+					player_height += 14.0
+					player_speed *= 0.95
+				2:
+					timing_window += 0.020
+					perfect_multiplier = 1.08
+				3:
+					perfect_multiplier = 1.25
+					perfect_charge = 30.0
+		1:
+			match build_ranks[1]:
+				1:
+					spin_multiplier *= 1.45
+					timing_window -= 0.010
+				2:
+					movement_spin = 1.8
+					player_speed *= 0.95
+				3:
+					special_spin = 1.0
+					charge_gain -= 2.0
+		2:
+			match build_ranks[2]:
+				1:
+					special_multiplier = 1.45
+					charge_gain -= 2.0
+				2:
+					perfect_multiplier = 1.20
+					timing_window -= 0.015
+				3:
+					special_refund = 20.0
+	upgrades.append(str(offer.name))

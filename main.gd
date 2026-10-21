@@ -3,11 +3,11 @@ extends Node2D
 const Rules = preload("res://scripts/match_rules.gd")
 const Arena = preload("res://scripts/arena.gd")
 const Sound = preload("res://scripts/sound.gd")
-const MINT := Color("c8cfaa")
-const WHITE := Color("f5e9ce")
+const MINT := Color("d6bc82")
+const WHITE := Color("fff4d5")
 const MUTED := Color("c9c1ac")
 const DARK := Color("1d302a")
-const PANEL := Color(0.09, 0.14, 0.13, 0.90)
+const PANEL := Color("172924")
 const ORANGE := Color("eebc82")
 
 const BODY_FONT = preload("res://assets/fonts/pixel.ttf")
@@ -21,8 +21,10 @@ var ui: Control
 var screen: String = "menu"
 var tournament: bool = true
 var stage_index: int = 0
-var settings := {"difficulty": 1, "mouse": false, "points": 7, "volume": 0.6, "best": 0}
+var settings := {"difficulty": 0, "mouse": false, "points": 5, "volume": 0.6, "best": 0}
 var score_label: Label
+var rival_score_label: Label
+var build_label: Label
 var sets_label: Label
 var rally_label: Label
 var charge_label: Label
@@ -63,16 +65,21 @@ func load_settings() -> void:
 	if config.load("user://settings.cfg") == OK:
 		for key in settings:
 			settings[key] = config.get_value("game", key, settings[key])
+	if int(config.get_value("game", "defaults_version", 0)) < 1:
+		settings.difficulty = 0
+		settings.points = 5
+		save_settings()
 	settings.difficulty = clampi(int(settings.difficulty), 0, 2)
 	settings.best = clampi(int(settings.best), 0, 4)
 	settings.volume = clampf(float(settings.volume), 0, 1)
 	if not int(settings.points) in [5, 7, 11]:
-		settings.points = 7
+		settings.points = 5
 
 func save_settings() -> void:
 	var config := ConfigFile.new()
 	for key in settings:
 		config.set_value("game", key, settings[key])
+	config.set_value("game", "defaults_version", 1)
 	config.save("user://settings.cfg")
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -100,14 +107,16 @@ func _notification(what: int) -> void:
 func _process(delta: float) -> void:
 	if screen != "game" or not is_instance_valid(score_label):
 		return
-	score_label.text = "%02d  :  %02d" % [rules.points[0], rules.points[1]]
-	sets_label.text = "SETS  %d — %d   /   MELHOR DE 3" % [rules.sets[0], rules.sets[1]]
-	rally_label.text = "TROCA  %02d       PERFEITOS  %02d" % [rules.rally, rules.total_perfect]
+	score_label.text = "%02d" % rules.points[0]
+	rival_score_label.text = "%02d" % rules.points[1]
+	build_label.text = rules.build_summary()
+	sets_label.text = "SET ÚNICO · ATÉ %d" % rules.points_to_win
+	rally_label.text = "TROCA %02d  ·  PERFEITOS %02d" % [rules.rally, rules.total_perfect]
 	charge_bar.value = rules.charge
 	if rules.special_armed:
-		charge_label.text = "INCÊNDIO ARMADO • PRÓXIMO GOLPE"
+		charge_label.text = "INCÊNDIO ARMADO"
 	elif rules.charge >= 100:
-		charge_label.text = "INCÊNDIO PRONTO  [SHIFT]"
+		charge_label.text = "INCÊNDIO PRONTO [SHIFT]"
 	else:
 		charge_label.text = "BOLA DE INCÊNDIO   %d%%" % int(rules.charge)
 	charge_label.modulate = ORANGE if rules.special_armed else WHITE
@@ -149,7 +158,9 @@ func text(value: String, rect: Rect2, size: int = 20, color: Color = WHITE, alig
 	label.add_theme_font_override("font", TITLE_FONT if size >= 34 else BODY_FONT)
 	label.add_theme_color_override("font_color", color)
 	label.add_theme_color_override("font_shadow_color", Color(0.02, 0.05, 0.035, 0.55))
-	label.add_theme_constant_override("shadow_offset_y", 1)
+	label.add_theme_constant_override("shadow_offset_y", 0)
+	label.add_theme_color_override("font_outline_color", Color("18231e"))
+	label.add_theme_constant_override("outline_size", 0)
 	label.horizontal_alignment = align
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -161,45 +172,67 @@ func text(value: String, rect: Rect2, size: int = 20, color: Color = WHITE, alig
 
 func button(value: String, rect: Rect2, callback: Callable, primary: bool = false) -> Button:
 	var node := Button.new()
-	node.text = value
+	node.text = "  " + value.replace("   →", "")
 	node.position = rect.position
 	node.size = rect.size
+	node.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	node.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	node.add_theme_font_size_override("font_size", 16)
+	node.add_theme_font_size_override("font_size", 22)
 	node.add_theme_font_override("font", BODY_FONT)
-	node.add_theme_color_override("font_color", DARK if primary else WHITE)
-	node.add_theme_color_override("font_focus_color", DARK if primary else WHITE)
-	node.add_theme_color_override("font_hover_color", DARK if primary else MINT)
-	node.add_theme_color_override("font_pressed_color", DARK if primary else MINT)
-	node.add_theme_stylebox_override("normal", style(MINT if primary else PANEL, MINT if primary else Color("617366")))
-	node.add_theme_stylebox_override("hover", style(MINT.lightened(0.2) if primary else Color("394d40"), MINT))
-	node.add_theme_stylebox_override("pressed", style(MINT.darkened(0.12) if primary else Color("49624c"), MINT))
-	var focus := style(Color(0, 0, 0, 0), WHITE)
-	focus.set_border_width_all(2)
-	node.add_theme_stylebox_override("focus", focus)
+	node.add_theme_color_override("font_color", MINT if primary else WHITE)
+	node.add_theme_color_override("font_hover_color", DARK)
+	node.add_theme_color_override("font_focus_color", DARK)
+	node.add_theme_color_override("font_pressed_color", DARK)
+	node.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+	var selected := StyleBoxFlat.new()
+	selected.bg_color = WHITE
+	selected.border_color = MINT
+	selected.border_width_left = 4
+	node.add_theme_stylebox_override("hover", selected)
+	node.add_theme_stylebox_override("focus", selected)
+	node.add_theme_stylebox_override("pressed", selected)
 	node.pressed.connect(func(): sound.play("click"); callback.call())
 	ui.add_child(node)
 	return node
 
 func heading(kicker: String, title: String, subtitle: String) -> void:
-	text(kicker, Rect2(72, 46, 1040, 24), 14, MINT)
-	text(title, Rect2(72, 100, 1110, 74), 36)
-	text(subtitle, Rect2(72, 180, 1100, 44), 19, MUTED)
+	text(kicker, Rect2(76, 38, 1100, 24), 15, MINT)
+	text(title, Rect2(72, 76, 1120, 62), 40)
+	text(subtitle, Rect2(76, 150, 1100, 56), 19, MUTED)
+
+func menu_button(value: String, rect: Rect2, callback: Callable, primary: bool = false) -> Button:
+	var item := button(value, rect, callback, primary)
+	item.text = value
+	item.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	item.add_theme_font_size_override("font_size", 22)
+	var idle := StyleBoxFlat.new()
+	idle.bg_color = Color("b9573f") if primary else Color(0, 0, 0, 0)
+	idle.border_color = Color("773e30") if primary else Color(0, 0, 0, 0)
+	idle.border_width_bottom = 4 if primary else 0
+	item.add_theme_stylebox_override("normal", idle)
+	item.add_theme_color_override("font_color", WHITE)
+	return item
 
 func show_menu() -> void:
 	rules.running = false
 	rules.paused = false
 	clear_ui("menu", "menu")
-	box(Rect2(78, 112, 330, 495), Color(0.055, 0.10, 0.075, 0.90), Color("68755e"))
-	text("PING PONG", Rect2(104, 138, 286, 60), 46, WHITE)
-	text("Praça do Entardecer", Rect2(105, 201, 282, 28), 18, MUTED)
-	button("JOGAR TORNEIO   →", Rect2(104, 266, 278, 42), func(): start_run(true), true).grab_focus()
-	button("PARTIDA RÁPIDA", Rect2(104, 319, 278, 38), func(): start_run(false))
-	button("COMO JOGAR", Rect2(104, 369, 278, 38), show_help)
-	button("OPÇÕES", Rect2(104, 419, 278, 38), show_options)
-	button("CRÉDITOS", Rect2(104, 469, 278, 38), show_credits)
-	button("SAIR", Rect2(104, 519, 278, 38), func(): get_tree().quit())
-	text("Melhor campanha: %d / 4" % int(settings.best), Rect2(104, 568, 278, 22), 16, MUTED)
+	box(Rect2(0, 0, 1280, 720), Color(0.035, 0.06, 0.045, 0.28), Color.TRANSPARENT)
+	var title := text("PING NA PRAÇA", Rect2(140, 70, 1000, 108), 72, WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+	title.add_theme_color_override("font_outline_color", Color("172924"))
+	title.add_theme_constant_override("outline_size", 10)
+	title.add_theme_constant_override("shadow_offset_y", 5)
+	text("TÊNIS DE MESA", Rect2(340, 184, 600, 30), 18, WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+	box(Rect2(440, 248, 400, 368), Color(0.065, 0.12, 0.095, 0.96), Color.TRANSPARENT)
+	menu_button("JOGAR TORNEIO", Rect2(464, 276, 352, 52), func(): start_run(true), true).grab_focus()
+	menu_button("PARTIDA RÁPIDA", Rect2(464, 344, 352, 44), func(): start_run(false))
+	menu_button("COMO JOGAR", Rect2(464, 402, 352, 44), show_help)
+	menu_button("OPÇÕES", Rect2(464, 460, 352, 44), show_options)
+	menu_button("CRÉDITOS", Rect2(464, 544, 168, 40), show_credits)
+	menu_button("SAIR", Rect2(648, 544, 168, 40), func(): get_tree().quit())
+	var record := text("MELHOR TORNEIO  %d / 4" % int(settings.best), Rect2(390, 650, 500, 28), 17, WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+	record.add_theme_color_override("font_outline_color", DARK)
+	record.add_theme_constant_override("outline_size", 4)
 
 func start_run(is_tournament: bool) -> void:
 	tournament = is_tournament
@@ -215,23 +248,20 @@ func start_run(is_tournament: bool) -> void:
 
 func show_map() -> void:
 	clear_ui("map")
-	heading("TABELA DE JOGOS", "Quem está na mesa?", "Ganhe dois sets para avançar. Entre partidas, escolha uma melhoria.")
+	heading("", "Torneio da praça", "Vença um set para avançar. Uma derrota encerra o torneio.")
 	for i in range(4):
 		var data: Dictionary = Rules.OPPONENTS[i]
-		var y := 252 + i * 82
+		var y := 246 + i * 78
 		var active := i == stage_index
-		box(Rect2(72, y, 734, 72), Color("3a4d40") if active else PANEL, MINT if active else Color("536451"))
-		text("%02d" % (i + 1), Rect2(91, y + 10, 70, 48), 30, MINT if active else MUTED)
-		text(str(data.name), Rect2(173, y + 7, 274, 29), 21)
-		text(str(data.style), Rect2(173, y + 39, 274, 20), 12, MUTED)
-		var status := "VENCEU" if i < stage_index else ("SUA VEZ" if active else "NA FILA")
-		text(status, Rect2(537, y + 20, 239, 30), 14, MINT if active else MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
-	text("PRÓXIMO JOGO", Rect2(856, 266, 336, 25), 12, MINT)
-	text(str(Rules.OPPONENTS[stage_index].name), Rect2(851, 313, 340, 57), 34)
-	text(str(Rules.OPPONENTS[stage_index].description), Rect2(856, 386, 330, 80), 21, WHITE)
-	button("ENTRAR NA ARENA   →", Rect2(851, 510, 340, 57), start_stage, true).grab_focus()
-	text("Melhorias: " + (", ".join(rules.upgrades) if not rules.upgrades.is_empty() else "nenhuma ainda"), Rect2(72, 598, 1112, 42), 14, MUTED)
-	button("MENU", Rect2(72, 652, 128, 36), show_menu)
+		text("%02d" % (i + 1), Rect2(82, y, 72, 54), 32, MINT if active else MUTED)
+		text(str(data.name), Rect2(174, y, 340, 36), 27, MINT if active else WHITE)
+		text(str(data.style), Rect2(176, y + 38, 340, 26), 16, MUTED)
+		text("VENCEU" if i < stage_index else ("PRÓXIMO" if active else ""), Rect2(546, y + 10, 170, 32), 18, MINT)
+	text(str(Rules.OPPONENTS[stage_index].name), Rect2(816, 260, 380, 60), 38, MINT)
+	text(str(Rules.OPPONENTS[stage_index].description), Rect2(820, 336, 360, 100), 24)
+	button("Jogar", Rect2(816, 470, 330, 52), start_stage, true).grab_focus()
+	text("Build: " + rules.build_summary(), Rect2(82, 588, 1100, 42), 18, MUTED)
+	button("Voltar", Rect2(82, 648, 220, 42), show_menu)
 
 func start_stage() -> void:
 	rules.begin_match(stage_index)
@@ -241,33 +271,37 @@ func start_stage() -> void:
 
 func show_hud() -> void:
 	clear_ui("game", "game")
-	box(Rect2(350, 22, 580, 77), Color(0.055, 0.10, 0.075, 0.90))
-	text("", Rect2(54, 32, 300, 28), 16, MINT)
-	var mode := "CIRCUITO  %02d / 04" % (stage_index + 1) if tournament else "PARTIDA RÁPIDA"
-	text(mode, Rect2(54, 32, 280, 24), 16, WHITE)
-	text("HUGO", Rect2(366, 42, 128, 30), 16, MINT, HORIZONTAL_ALIGNMENT_RIGHT)
-	score_label = text("00  :  00", Rect2(500, 29, 280, 48), 35, WHITE, HORIZONTAL_ALIGNMENT_CENTER)
-	score_label.add_theme_font_override("font", SCORE_FONT)
-	text(str(rules.opponent().name), Rect2(786, 42, 136, 30), 16, WHITE)
-	sets_label = text("", Rect2(470, 76, 340, 18), 11, MUTED, HORIZONTAL_ALIGNMENT_CENTER)
-	button("PAUSA [ESC]", Rect2(1090, 38, 136, 40), show_pause)
-	notice_label = text("", Rect2(342, 651, 596, 26), 16, WHITE, HORIZONTAL_ALIGNMENT_CENTER)
-	serve_label = text("", Rect2(500, 350, 280, 80), 24, WHITE, HORIZONTAL_ALIGNMENT_CENTER)
-	box(Rect2(40, 600, 304, 65), Color(0.055, 0.10, 0.075, 0.90))
-	charge_label = text("", Rect2(56, 605, 275, 28), 11)
+	box(Rect2(412, 14, 456, 80), PANEL, Color.TRANSPARENT)
+	box(Rect2(548, 23, 72, 48), WHITE, Color.TRANSPARENT)
+	box(Rect2(660, 23, 72, 48), WHITE, Color.TRANSPARENT)
+	text("HUGO", Rect2(426, 30, 112, 30), 18, WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+	text(str(rules.opponent().name), Rect2(740, 30, 118, 30), 18, WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+	score_label = text("00", Rect2(548, 24, 72, 44), 36, DARK, HORIZONTAL_ALIGNMENT_CENTER)
+	rival_score_label = text("00", Rect2(660, 24, 72, 44), 36, DARK, HORIZONTAL_ALIGNMENT_CENTER)
+	text(":", Rect2(624, 26, 32, 40), 28, MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	sets_label = text("", Rect2(520, 73, 240, 18), 14, MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	box(Rect2(24, 22, 202, 36), PANEL, Color.TRANSPARENT)
+	text("TORNEIO  %d / 4" % (stage_index + 1) if tournament else "PARTIDA RÁPIDA", Rect2(38, 27, 180, 26), 17)
+	box(Rect2(1128, 22, 128, 36), PANEL, Color.TRANSPARENT)
+	button("Pausa", Rect2(1132, 22, 120, 36), show_pause)
+	serve_label = text("", Rect2(496, 324, 288, 108), 34, WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+	serve_label.add_theme_color_override("font_outline_color", DARK)
+	serve_label.add_theme_constant_override("outline_size", 6)
+	notice_label = text("", Rect2(360, 650, 560, 34), 23, WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+	notice_label.add_theme_color_override("font_outline_color", DARK)
+	notice_label.add_theme_constant_override("outline_size", 5)
+	box(Rect2(24, 614, 292, 70), PANEL, Color.TRANSPARENT)
+	charge_label = text("", Rect2(40, 622, 264, 24), 16)
 	charge_bar = ProgressBar.new()
 	charge_bar.show_percentage = false
-	charge_bar.add_theme_stylebox_override("background", style(Color("465443"), Color("465443")))
-	charge_bar.add_theme_stylebox_override("fill", style(MINT, MINT))
+	charge_bar.add_theme_stylebox_override("background", style(Color("3c4c41"), Color.TRANSPARENT))
+	charge_bar.add_theme_stylebox_override("fill", style(MINT, Color.TRANSPARENT))
 	ui.add_child(charge_bar)
-	charge_bar.position = Vector2(58, 645)
-	charge_bar.size = Vector2(267, 6)
-	box(Rect2(936, 600, 304, 65), Color(0.055, 0.10, 0.075, 0.90))
-	rally_label = text("", Rect2(952, 605, 274, 28), 12)
-	text("SET: %d PONTOS • VANTAGEM DE 2" % rules.points_to_win, Rect2(952, 637, 274, 18), 10, MUTED)
-	box(Rect2(0, 682, 1280, 38), Color(0.055, 0.09, 0.065, 0.93), Color.TRANSPARENT)
-	var move_hint := "MOUSE: MOVER" if rules.mouse_mode else "A / D ou ← / →: MOVER"
-	text(move_hint + "     •     ESPAÇO: TIMING     •     Q / E: EFEITO     •     SHIFT: ESPECIAL", Rect2(40, 689, 1200, 23), 12, WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+	charge_bar.position = Vector2(40, 660)
+	charge_bar.size = Vector2(258, 7)
+	box(Rect2(942, 614, 314, 70), PANEL, Color.TRANSPARENT)
+	build_label = text(rules.build_summary(), Rect2(956, 624, 286, 24), 16, MINT)
+	rally_label = text("", Rect2(956, 657, 286, 20), 14, MUTED)
 
 func show_notice(value: String, kind: String) -> void:
 	if screen == "game" and is_instance_valid(notice_label):
@@ -280,13 +314,12 @@ func show_pause() -> void:
 		return
 	rules.paused = true
 	clear_ui("pause", "game")
-	box(Rect2(0, 0, 1280, 720), Color(0.025, 0.05, 0.075, 0.88), Color.TRANSPARENT)
-	box(Rect2(407, 155, 466, 410))
-	text("A MESA FICA RESERVADA", Rect2(440, 180, 400, 30), 13, MINT, HORIZONTAL_ALIGNMENT_CENTER)
-	text("Pausa", Rect2(440, 225, 400, 72), 50, WHITE, HORIZONTAL_ALIGNMENT_CENTER)
-	button("CONTINUAR", Rect2(455, 326, 370, 54), resume_game, true).grab_focus()
-	button("REINICIAR PARTIDA", Rect2(455, 396, 370, 48), start_stage)
-	button("VOLTAR AO MENU", Rect2(455, 458, 370, 48), show_menu)
+	box(Rect2(0, 0, 1280, 720), Color(0.06, 0.09, 0.07, 0.78), Color.TRANSPARENT)
+	text("PAUSA", Rect2(420, 156, 440, 90), 56, WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+	text(rules.build_summary(), Rect2(350, 264, 580, 36), 22, MINT, HORIZONTAL_ALIGNMENT_CENTER)
+	button("Continuar", Rect2(464, 328, 354, 52), resume_game, true).grab_focus()
+	button("Reiniciar partida", Rect2(464, 396, 354, 52), start_stage)
+	button("Voltar ao menu", Rect2(464, 464, 354, 52), show_menu)
 
 func resume_game() -> void:
 	rules.paused = false
@@ -303,19 +336,18 @@ func finish_match(won: bool) -> void:
 
 func show_upgrades() -> void:
 	clear_ui("upgrade")
-	heading("PARTIDA VENCIDA", "Antes do próximo jogo", "Escolha uma melhoria. Ela vale até o fim deste torneio.")
+	heading("ENTRE PARTIDAS", "Monte seu estilo", "Escolha um caminho. Repetir evolui a build; misturar combina os efeitos.")
 	for i in range(3):
-		var data: Dictionary = Rules.UPGRADES[i]
-		var x := 72 + 382 * i
-		box(Rect2(x, 258, 350, 290), PANEL, Color("617366"))
-		box(Rect2(x + 24, 322, 302, 2), MINT, Color.TRANSPARENT)
-		text(str(data.symbol) + " / " + str(data.tag), Rect2(x + 24, 280, 310, 30), 13, MINT)
-		text(str(data.name), Rect2(x + 24, 338, 310, 46), 26, WHITE)
-		text(str(data.description), Rect2(x + 24, 390, 304, 65), 18, MUTED)
-		var choose := button("ESCOLHER   →", Rect2(x + 24, 474, 302, 48), func(): choose_upgrade(i), true)
+		var data: Dictionary = rules.upgrade_offer(i)
+		var y := 226 + i * 118
+		text("%s · NÍVEL %d" % [str(data.path).to_upper(), int(data.rank)], Rect2(84, y, 330, 22), 15, MINT)
+		var choose := button(str(data.name), Rect2(80, y + 30, 350, 48), func(): choose_upgrade(i), true)
+		text(str(data.gain), Rect2(474, y + 2, 708, 38), 22)
+		text(str(data.cost), Rect2(474, y + 44, 708, 44), 18, MUTED)
 		if i == 0:
 			choose.grab_focus()
-	text("Seu próximo rival está esperando. A derrota encerra o torneio.", Rect2(72, 602, 1100, 40), 16, MUTED)
+	text("BUILD ATUAL   " + rules.build_summary(), Rect2(84, 610, 1100, 30), 18, MINT)
+	text("Até 3 escolhas por torneio. As melhorias terminam junto com a tentativa.", Rect2(84, 656, 1100, 26), 16, MUTED)
 
 func choose_upgrade(index: int) -> void:
 	rules.apply_upgrade(index)
@@ -324,36 +356,31 @@ func choose_upgrade(index: int) -> void:
 
 func show_result(won: bool) -> void:
 	clear_ui("result")
-	var title := "A taça é do Hugo!" if won and tournament else ("Vitória!" if won else "Fim de jogo.")
-	heading("FIM DO TORNEIO" if tournament else "FIM DE PARTIDA", title, "Confira os números da sua campanha.")
+	var title := "Torneio vencido!" if won and tournament else ("Vitória!" if won else "Fim de jogo")
+	heading("", title, "")
 	var values := [str(rules.total_points), str(rules.total_perfect), str(rules.best_rally)]
 	var names := ["Pontos marcados", "Rebatidas perfeitas", "Maior troca"]
-	box(Rect2(72, 257, 1114, 210), PANEL, Color("617366"))
-	text("SÚMULA DA PARTIDA", Rect2(96, 271, 1000, 24), 12, MINT)
 	for i in range(3):
-		var y := 305 + i * 49
-		text(names[i], Rect2(97, y, 800, 38), 22, WHITE)
-		var number := text(values[i], Rect2(1010, y, 148, 38), 26, WHITE, HORIZONTAL_ALIGNMENT_RIGHT)
-		number.add_theme_font_override("font", SCORE_FONT)
-		box(Rect2(98, y + 41, 1059, 1), Color("617366"), Color.TRANSPARENT)
-	button("JOGAR NOVAMENTE", Rect2(72, 514, 312, 58), func(): start_run(tournament), true).grab_focus()
-	button("MENU INICIAL", Rect2(404, 514, 270, 58), show_menu)
+		var y := 250 + i * 76
+		text(names[i], Rect2(82, y, 660, 48), 28)
+		text(values[i], Rect2(790, y, 220, 48), 38, MINT, HORIZONTAL_ALIGNMENT_RIGHT)
+	button("Jogar novamente", Rect2(82, 534, 400, 54), func(): start_run(tournament), true).grab_focus()
+	button("Menu inicial", Rect2(82, 602, 400, 54), show_menu)
 
 func show_help() -> void:
 	clear_ui("help")
-	heading("CONTROLES", "Como jogar", "Você joga embaixo da mesa. Mova-se para os lados e devolva a bola ao rival no topo.")
+	heading("CONTROLES", "Como jogar", "Você joga na parte inferior da tela. Mova-se para os lados para alcançar a bola.")
 	var entries := [
 		["01  MOVIMENTO", "A / D ou setas esquerda/direita para mover. Para usar o mouse, selecione-o em Opções."],
 		["02  TIMING", "A bola rebate no contato. Aperte Espaço até 100 ms antes ou depois para acelerar e ganhar carga."],
 		["03  EFEITO", "Segure Q ou E ao rebater para curvar a bola para a esquerda ou direita. O movimento também dá efeito."],
 		["04  BOLA ESPECIAL", "Rebatidas carregam a barra. Com 100%, aperte Shift: o próximo contato lança a Bola de Incêndio. Shift novamente cancela."],
-		["05  REGRAS", "Vença 2 sets, com vantagem de 2 e limite de meta + 8. Bola para fora da lateral: ponto do rival do último rebatedor."],
-		["06  TORNEIO", "Vença quatro rivais. Entre vitórias, escolha uma melhoria. Perder encerra a corrida e reinicia as melhorias."]
+		["05  REGRAS", "Vença 1 set, com vantagem de 2 e limite de meta + 8. Bola para fora da lateral: ponto do rival do último rebatedor."],
+		["06  TORNEIO", "Vença quatro rivais. Entre vitórias, evolua Defesa, Efeito ou Ataque. Cada escolha tem um custo. A build dura um torneio."]
 	]
 	for i in range(6):
 		var x := 72 + (i % 2) * 578
 		var y := 252 + (i / 2 as int) * 116
-		box(Rect2(x, y + 99, 538, 1), Color("65716d"), Color.TRANSPARENT)
 		text(entries[i][0], Rect2(x + 18, y + 8, 516, 28), 14, MINT)
 		text(entries[i][1], Rect2(x + 18, y + 36, 516, 58), 15, MUTED)
 	button("VOLTAR", Rect2(72, 636, 190, 48), show_menu).grab_focus()
@@ -396,10 +423,9 @@ func show_options() -> void:
 
 func show_credits() -> void:
 	clear_ui("credits")
-	heading("PROJETO", "Ping Pong — Torneio da Praça", "Um jogo de tênis de mesa com Hugo e os rivais da praça.")
-	box(Rect2(72, 266, 1128, 262))
-	text("DESIGN E EQUIPE", Rect2(98, 288, 1000, 32), 15, MINT)
-	text("Nome do estúdio e integrantes: a definir pela equipe.", Rect2(98, 329, 1040, 38), 23)
+	heading("PROJETO", "Ping na Praça", "Um jogo de tênis de mesa com Hugo e os rivais da praça.")
+	text("DESENVOLVIDO POR", Rect2(98, 288, 1000, 30), 15, MINT)
+	text("KIB Enterprises", Rect2(98, 327, 1040, 46), 32)
 	text("ARTE E ÁUDIO DO PROTÓTIPO", Rect2(98, 393, 1000, 30), 15, MINT)
 	text("Cenário e sprites originais gerados com IA; mesa desenhada no motor. Trilha sintetizada original.\nImplementação assistida por IA. Motor: Godot 4.4.1, sob licença MIT.", Rect2(98, 438, 1020, 65), 18, MUTED)
 	button("VOLTAR", Rect2(72, 602, 190, 52), show_menu).grab_focus()
